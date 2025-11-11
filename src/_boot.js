@@ -192,14 +192,15 @@ function createWindow(settings) {
         backgroundColor: '#000000',
         webPreferences: {
             devTools: true,
-	    enableRemoteModule: true,
-            contextIsolation: false,
+            enableRemoteModule: false,
+            contextIsolation: true,
             backgroundThrottling: false,
             webSecurity: true,
-            nodeIntegration: true,
+            nodeIntegration: false,
             nodeIntegrationInSubFrames: false,
             allowRunningInsecureContent: false,
-            experimentalFeatures: settings.experimentalFeatures || false
+            experimentalFeatures: settings.experimentalFeatures || false,
+            preload: path.join(__dirname, '_preload.js')
         }
     });
 
@@ -325,6 +326,8 @@ app.on('ready', async () => {
             };
 
             extraTtys[port] = term;
+            // Send the authentication token to the renderer
+            e.sender.send("auth-token-reply", {port: port, token: term._authToken});
             e.sender.send("ttyspawn-reply", "SUCCESS: "+port);
         }
     });
@@ -343,6 +346,17 @@ app.on('ready', async () => {
     });
     ipc.on("setKbOverride", (e, arg) => {
         kbOverride = arg;
+    });
+
+    // IPC handler for sharing WebSocket authentication tokens
+    ipc.on("getAuthToken", (e, port) => {
+        if (tty && Number(port) === tty.port) {
+            e.returnValue = tty._authToken;
+        } else if (extraTtys[port] && extraTtys[port]) {
+            e.returnValue = extraTtys[port]._authToken;
+        } else {
+            e.returnValue = null;
+        }
     });
 });
 

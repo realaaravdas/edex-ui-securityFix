@@ -31,7 +31,8 @@ window._delay = ms => {
 
 // Initiate basic error handling
 window.onerror = (msg, path, line, col, error) => {
-    document.getElementById("boot_screen").innerHTML += `${error} :  ${msg}<br/>==> at ${path}  ${line}:${col}`;
+    const escapeFn = window._escapeHtml || ((text) => text.toString());
+    document.getElementById("boot_screen").innerHTML += `${escapeFn(error.toString())} : ${escapeFn(msg.toString())}<br/>==> at ${escapeFn(path)}  ${line}:${col}`;
 };
 
 const path = require("path");
@@ -238,12 +239,14 @@ function displayLine() {
     } else {
         window.audioManager.stdout.play();
     }
-    bootScreen.innerHTML += log[i]+"<br/>";
+    const escapeFn = window._escapeHtml || ((text) => text.toString());
+    bootScreen.innerHTML += escapeFn(log[i])+"<br/>";
     i++;
 
     switch(true) {
         case i === 2:
-            bootScreen.innerHTML += `eDEX-UI Kernel version ${electron.remote.app.getVersion()} boot at ${Date().toString()}; root:xnu-1699.22.73~1/RELEASE_X86_64`;
+            const escapeFn = window._escapeHtml || ((text) => text.toString());
+            bootScreen.innerHTML += `eDEX-UI Kernel version ${escapeFn(electron.remote.app.getVersion())} boot at ${escapeFn(Date().toString())}; root:xnu-1699.22.73~1/RELEASE_X86_64`;
         case i === 4:
             setTimeout(displayLine, 500);
             break;
@@ -386,7 +389,8 @@ async function initUI() {
 
     getDisplayName().then(user => {
         if (user) {
-            greeter.innerHTML += `Welcome back, <em>${user}</em>`;
+            const escapeFn = window._escapeHtml || ((text) => text.toString());
+            greeter.innerHTML += `Welcome back, <em>${escapeFn(user)}</em>`;
         } else {
             greeter.innerHTML += "Welcome back";
         }
@@ -481,7 +485,8 @@ async function initUI() {
     };
     window.currentTerm = 0;
     window.term[0].onprocesschange = p => {
-        document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${p}</p>`;
+        const escapeFn = window._escapeHtml || ((text) => text.toString());
+        document.getElementById("shell_tab0").innerHTML = `<p>MAIN - ${escapeFn(p)}</p>`;
     };
     // Prevent losing hardware keyboard focus on the terminal when using touch keyboard
     window.onmouseup = e => {
@@ -573,7 +578,8 @@ window.focusShellTab = number => {
                 };
 
                 window.term[number].onprocesschange = p => {
-                    document.getElementById("shell_tab"+number).innerHTML = `<p>#${number+1} - ${p}</p>`;
+                    const escapeFn = window._escapeHtml || ((text) => text.toString());
+                    document.getElementById("shell_tab"+number).innerHTML = `<p>#${number+1} - ${escapeFn(p)}</p>`;
                 };
 
                 document.getElementById("shell_tab"+number).innerHTML = `<p>::${port}</p>`;
@@ -814,7 +820,21 @@ window.openSettings = async () => {
 };
 
 window.writeFile = (path) => {
-    fs.writeFile(path, document.getElementById("fileEdit").value, "utf-8", () => {
+    // Sanitize file path to prevent directory traversal
+    if (typeof path !== 'string' || !path.trim()) {
+        throw new Error('Invalid file path');
+    }
+    if (path.includes('..') || path.includes('~')) {
+        throw new Error('Directory traversal not allowed');
+    }
+    // Only allow writing within certain safe directories
+    const userPath = require('path').join(remote.app.getPath('userData'), 'userfiles');
+    const safePath = require('path').resolve(userPath, path);
+    if (!safePath.startsWith(require('path').resolve(userPath))) {
+        throw new Error('Access denied: path outside allowed directory');
+    }
+    
+    fs.writeFile(safePath, document.getElementById("fileEdit").value, "utf-8", () => {
         document.getElementById("fedit-status").innerHTML = "<i>File saved.</i>";
     });
 };

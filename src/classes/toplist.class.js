@@ -47,8 +47,9 @@ class Toplist {
             });
             list.forEach(proc => {
                 let el = document.createElement("tr");
-                el.innerHTML = `<td>${proc.pid}</td>
-                                <td><strong>${proc.name}</strong></td>
+                const escapeFn = window._escapeHtml || ((text) => text.toString());
+                el.innerHTML = `<td>${escapeFn(proc.pid.toString())}</td>
+                                <td><strong>${escapeFn(proc.name)}</strong></td>
                                 <td>${Math.round(proc.cpu*10)/10}%</td>
                                 <td>${Math.round(proc.mem*10)/10}%</td>`;
                 document.getElementById("mod_toplist_table").append(el);
@@ -177,9 +178,10 @@ class Toplist {
 
                     list.forEach(proc => {
                         let el = document.createElement("tr");
-                        el.innerHTML = `<td class="pid">${proc.pid}</td>
-                            <td class="name">${proc.name}</td>
-                            <td class="user">${proc.user}</td>
+                        const escapeFn = window._escapeHtml || ((text) => text.toString());
+                        el.innerHTML = `<td class="pid">${escapeFn(proc.pid.toString())}</td>
+                            <td class="name">${escapeFn(proc.name)}</td>
+                            <td class="user">${escapeFn(proc.user)}</td>
                             <td class="cpu">${Math.round(proc.cpu * 10) / 10}%</td>
                             <td class="mem">${Math.round(proc.mem * 10) / 10}%</td>
                             <td class="state">${proc.state}</td>

@@ -466,14 +466,15 @@ class FilesystemDisplay {
                     e.lastAccessed = "--";
                 }
 
-                filesDOM += `<div class="fs_disp_${e.type}${hidden} animationWait" onclick='${cmdPrefix+cmd+cmdSuffix}'>
+                const escapeFn = window._escapeHtml || ((text) => text.toString());
+                filesDOM += `<div class="fs_disp_${escapeFn(e.type)}${hidden} animationWait" onclick='${cmdPrefix+cmd+cmdSuffix}'>
                                 <svg viewBox="0 0 ${icon.width} ${icon.height}" fill="${this.iconcolor}">
                                     ${icon.svg}
                                 </svg>
-                                <h3>${e.name}</h3>
-                                <h4>${type}</h4>
-                                <h4>${e.size}</h4>
-                                <h4>${e.lastAccessed}</h4>
+                                <h3>${escapeFn(e.name)}</h3>
+                                <h4>${escapeFn(type)}</h4>
+                                <h4>${escapeFn(e.size)}</h4>
+                                <h4>${escapeFn(e.lastAccessed)}</h4>
                             </div>`;
             });
             this.filesContainer.innerHTML = filesDOM;
@@ -525,12 +526,13 @@ class FilesystemDisplay {
 
             // See #226
             if (!isNaN(fsBlock.use)) {
-                this.space_bar.text.innerHTML = `Mount <strong>${displayMount}</strong> used <strong>${Math.round(fsBlock.use)}%</strong>`;
+                const escapeFn = window._escapeHtml || ((text) => text.toString());
+            this.space_bar.text.innerHTML = `Mount <strong>${escapeFn(displayMount)}</strong> used <strong>${Math.round(fsBlock.use)}%</strong>`;
                 this.space_bar.bar.value = Math.round(fsBlock.use);
             } else if (!isNaN((fsBlock.size / fsBlock.used) * 100)) {
                 let usage = Math.round((fsBlock.size / fsBlock.used) * 100);
 
-                this.space_bar.text.innerHTML = `Mount <strong>${displayMount}</strong> used <strong>${usage}%</strong>`;
+                this.space_bar.text.innerHTML = `Mount <strong>${escapeFn(displayMount)}</strong> used <strong>${usage}%</strong>`;
                 this.space_bar.bar.value = usage;
             } else {
                 this.space_bar.text.innerHTML = "Could not calculate mountpoint usage.";

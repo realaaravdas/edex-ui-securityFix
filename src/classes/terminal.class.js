@@ -176,7 +176,9 @@ class Terminal {
             let sockHost = opts.host || "127.0.0.1";
             let sockPort = this.port;
 
-            this.socket = new WebSocket("ws://"+sockHost+":"+sockPort);
+            // Get authentication token from main process via IPC
+            const authToken = this._getAuthToken();
+            this.socket = new WebSocket("ws://"+sockHost+":"+sockPort+"?token="+authToken);
             this.socket.onopen = () => {
                 let attachAddon = new AttachAddon(this.socket);
                 this.term.loadAddon(attachAddon);
@@ -298,6 +300,18 @@ class Terminal {
                 },
                 didCopy: false
             };
+            
+            // Method to get authentication token from main process
+            this._getAuthToken = () => {
+                try {
+                    // Get token from main process via synchronous IPC
+                    return this.Ipc.sendSync('getAuthToken', this.port);
+                } catch (e) {
+                    console.error('Failed to get auth token:', e);
+                    // Fallback to a less secure method for compatibility
+                    return require("crypto").randomBytes(16).toString('hex');
+                }
+            };
 
         } else if (opts.role === "server") {
 
@@ -406,11 +420,56 @@ class Terminal {
                 }
             }, 1000);
 
-            this.tty = this.Pty.spawn(opts.shell || "bash", (opts.params.length > 0 ? opts.params : (process.platform === "win32" ? [] : ["--login"])), {
+            // Validate and sanitize shell path
+            let shellPath = opts.shell || "bash";
+            if (typeof shellPath !== 'string' || !shellPath.trim()) {
+                throw new Error('Invalid shell path');
+            }
+            // Prevent directory traversal in shell path
+            if (shellPath.includes('..')) {
+                throw new Error('Directory traversal not allowed in shell path');
+            }
+            shellPath = shellPath.trim();
+            
+            // Validate and sanitize shell parameters to prevent command injection
+            let shellArgs = [];
+            if (opts.params && opts.params.length > 0) {
+                // If params is a string, split it safely
+                if (typeof opts.params === 'string') {
+                    // Only allow safe argument patterns
+                    if (!/^[a-zA-Z0-9_\-./\s]+$/.test(opts.params)) {
+                        throw new Error('Invalid shell parameters format');
+                    }
+                    shellArgs = opts.params.trim().split(/\s+/).filter(arg => arg.length > 0);
+                } else if (Array.isArray(opts.params)) {
+                    // Validate each argument
+                    shellArgs = opts.params.filter(arg => {
+                        if (typeof arg !== 'string') return false;
+                        // Only allow safe characters in shell arguments
+                        return /^[a-zA-Z0-9_\-./]+$/.test(arg) && arg.length > 0;
+                    });
+                }
+            } else if (process.platform === "win32") {
+                shellArgs = [];
+            } else {
+                shellArgs = ["--login"];
+            }
+            
+            // Validate working directory
+            let workingDir = opts.cwd || process.env.PWD;
+            if (typeof workingDir !== 'string' || !workingDir.trim()) {
+                throw new Error('Invalid working directory');
+            }
+            // Prevent directory traversal in working directory
+            if (workingDir.includes('..')) {
+                throw new Error('Directory traversal not allowed in working directory');
+            }
+            
+            this.tty = this.Pty.spawn(shellPath, shellArgs, {
                 name: opts.env.TERM || "xterm-256color",
                 cols: 80,
                 rows: 24,
-                cwd: opts.cwd || process.env.PWD,
+                cwd: workingDir,
                 env: opts.env || process.env
             });
 
@@ -419,15 +478,71 @@ class Terminal {
                 this.onclosed(code, signal);
             });
 
+            // Generate a secure token for authentication
+            this._authToken = require("crypto").randomBytes(32).toString('hex');
+            
+            // Track connection attempts for rate limiting
+            this._connectionAttempts = new Map();
+            this._maxConnectionAttempts = 10;
+            this._attemptWindow = 60000; // 1 minute window
+            
             this.wss = new this.Websocket({
                 port: this.port,
                 clientTracking: true,
-                verifyClient: info => {
-                    if (this.wss.clients.length >= 1) {
-                        return false;
-                    } else {
-                        return true;
+                verifyClient: (info, callback) => {
+                    const clientIP = info.req.socket.remoteAddress;
+                    
+                    // Rate limiting check
+                    const now = Date.now();
+                    const attempts = this._connectionAttempts.get(clientIP) || [];
+                    const recentAttempts = attempts.filter(time => now - time < this._attemptWindow);
+                    
+                    if (recentAttempts.length >= this._maxConnectionAttempts) {
+                        console.log(`Connection rejected due to rate limiting from ${clientIP}`);
+                        return callback(false, 429, 'Too Many Requests');
                     }
+                    
+                    // origin validation - only allow local connections
+                    const origin = info.req.headers.origin || info.req.headers.referer || 'file://';
+                    const allowedOrigins = [
+                        'file://',
+                        'app://',
+                        'http://localhost',
+                        'http://127.0.0.1',
+                        'https://localhost',
+                        'https://127.0.0.1'
+                    ];
+                    
+                    const isAllowedOrigin = allowedOrigins.some(allowed => origin.startsWith(allowed));
+                    if (!isAllowedOrigin) {
+                        console.log(`Connection rejected due to invalid origin: ${origin} from ${clientIP}`);
+                        recentAttempts.push(now);
+                        this._connectionAttempts.set(clientIP, recentAttempts);
+                        return callback(false, 403, 'Forbidden');
+                    }
+                    
+                    // Check authentication token
+                    const url = new URL(info.req.url, 'http://localhost');
+                    const token = url.searchParams.get('token');
+                    
+                    if (token !== this._authToken) {
+                        console.log(`Connection rejected due to invalid auth token from ${clientIP}`);
+                        recentAttempts.push(now);
+                        this._connectionAttempts.set(clientIP, recentAttempts);
+                        return callback(false, 401, 'Unauthorized');
+                    }
+                    
+                    // Connection limit check
+                    if (this.wss.clients.length >= 1) {
+                        console.log(`Connection rejected due to client limit from ${clientIP}`);
+                        recentAttempts.push(now);
+                        this._connectionAttempts.set(clientIP, recentAttempts);
+                        return callback(false, 429, 'Too Many Connections');
+                    }
+                    
+                    // Clear successful connection attempts
+                    this._connectionAttempts.delete(clientIP);
+                    callback(true);
                 }
             });
             this.Ipc.on("terminal_channel-"+this.port, (e, ...args) => {
