@@ -17,10 +17,15 @@ eDEX-UI is a fullscreen, cross-platform terminal emulator and system monitor wit
 npm run install-linux
 ```
 
-**Windows (requires admin privileges):**
+**Windows:**
 ```bash
 npm run install-windows
 ```
+
+**Note for Windows users:** If you encounter errors during native module compilation (`node-pty`), you may need to install build tools manually:
+- Install [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022) with "Desktop development with C++" workload
+- Or install Visual Studio Community with the same workload
+- Modern Node.js versions (16+) typically work without additional setup
 
 ### Running
 
