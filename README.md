@@ -129,7 +129,8 @@ on *nix systems (You'll need the Xcode command line tools on macOS):
 - `npm run start`
 
 on Windows:
-- start cmd or powershell **as administrator**
+- Install "Build Tools for Visual Studio" with "C++ build tools" workload (or Visual Studio Community with "Desktop development with C++")
+- start cmd or powershell **as administrator** 
 - clone the repository
 - `npm run install-windows`
 - `npm run start`
